@@ -31,7 +31,7 @@ class ErrorsTest extends TestCase
      */
     private function client()
     {
-        return new Client('KEY', ['transport' => $this->transport, 'retries' => 0]);
+        return new Client('KEY', ['transport' => $this->transport, 'attempts' => 1]);
     }
 
     public function test_missing_funds_raise_payment_required(): void

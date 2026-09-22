@@ -75,7 +75,71 @@ class RetryTest extends TestCase
         self::assertSame(2, $this->transport->count());
     }
 
-    public function test_retries_stop_at_the_configured_limit(): void
+    /** По умолчанию у запроса три попытки: одна основная и две повторных. */
+    public function test_three_attempts_by_default(): void
+    {
+        $this->transport
+            ->queueJson(['message' => 'Сервис временно недоступен.'], 503)
+            ->queueJson(['message' => 'Сервис временно недоступен.'], 503)
+            ->queueJson(['message' => 'Сервис временно недоступен.'], 503)
+            ->queueJson(['results' => ['лишний']]);
+
+        $this->expectException(ServiceUnavailableException::class);
+
+        try {
+            // Настройку не трогаем: проверяется именно значение по умолчанию.
+            $client = new Client('KEY', [
+                'transport' => $this->transport,
+                'retry_delay' => 0.0,
+                'max_retry_delay' => 0.0,
+            ]);
+
+            $client->yandex('тест');
+        } finally {
+            self::assertSame(3, $this->transport->count());
+        }
+    }
+
+    /** Затупивший сервис успевает ответить с третьей попытки. */
+    public function test_slow_service_succeeds_on_a_later_attempt(): void
+    {
+        $this->transport
+            ->queueJson(['message' => 'Сервис временно недоступен.'], 503)
+            ->queueJson(['message' => 'Сервис временно недоступен.'], 503)
+            ->queueJson(['results' => ['ok']]);
+
+        $serp = $this->client()->yandex('тест');
+
+        self::assertSame(['ok'], $serp['results']);
+        self::assertSame(3, $this->transport->count());
+    }
+
+    /** Ноль попыток означал бы «не отправлять запрос» — подрезаем до одной. */
+    public function test_attempts_are_never_below_one(): void
+    {
+        foreach ([0, -5] as $configured) {
+            $transport = new FakeTransport;
+            $transport
+                ->queueJson(['message' => 'Сервис временно недоступен.'], 503)
+                ->queueJson(['results' => []]);
+
+            $client = new Client('KEY', [
+                'transport' => $transport,
+                'attempts' => $configured,
+                'retry_delay' => 0.0,
+                'max_retry_delay' => 0.0,
+            ]);
+
+            try {
+                $client->yandex('тест');
+                self::fail('Ожидался отказ сервиса');
+            } catch (ServiceUnavailableException $exception) {
+                self::assertSame(1, $transport->count(), 'attempts = '.$configured.' должно давать один запрос');
+            }
+        }
+    }
+
+    public function test_attempts_stop_at_the_configured_limit(): void
     {
         $this->transport
             ->queueJson(['message' => 'Too Many Attempts.'], 429)
@@ -85,7 +149,7 @@ class RetryTest extends TestCase
         $this->expectException(RateLimitException::class);
 
         try {
-            $this->client(['retries' => 2])->yandex('тест');
+            $this->client(['attempts' => 3])->yandex('тест');
         } finally {
             self::assertSame(3, $this->transport->count());
         }
@@ -264,14 +328,14 @@ class RetryTest extends TestCase
         }
     }
 
-    public function test_retries_can_be_turned_off(): void
+    public function test_a_single_attempt_means_no_retries(): void
     {
         $this->transport->queueFailure('сеть недоступна');
 
         $this->expectException(TransportException::class);
 
         try {
-            $this->client(['retries' => 0])->yandex('тест');
+            $this->client(['attempts' => 1])->yandex('тест');
         } finally {
             self::assertSame(1, $this->transport->count());
         }

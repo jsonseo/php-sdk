@@ -49,7 +49,7 @@ class Client
      * @var array<int, string>
      */
     private static $knownOptions = [
-        'base_url', 'timeout', 'connect_timeout', 'retries',
+        'base_url', 'timeout', 'connect_timeout', 'attempts',
         'retry_delay', 'max_retry_delay', 'auth', 'user_agent', 'transport',
     ];
 
@@ -76,7 +76,7 @@ class Client
     /**
      * @var int
      */
-    private $retries;
+    private $attempts;
 
     /**
      * @var float
@@ -109,7 +109,7 @@ class Client
      *     base_url?: string,
      *     timeout?: float,
      *     connect_timeout?: float,
-     *     retries?: int,
+     *     attempts?: int,
      *     retry_delay?: float,
      *     max_retry_delay?: float,
      *     auth?: string,
@@ -140,7 +140,8 @@ class Client
         // равно будет досчитан и оплачен.
         $this->timeout = isset($options['timeout']) ? (float) $options['timeout'] : 300.0;
         $this->connectTimeout = isset($options['connect_timeout']) ? (float) $options['connect_timeout'] : 10.0;
-        $this->retries = isset($options['retries']) ? max(0, (int) $options['retries']) : 2;
+        // Не меньше одной: ноль попыток означал бы «не отправлять запрос».
+        $this->attempts = isset($options['attempts']) ? max(1, (int) $options['attempts']) : 3;
         $this->retryDelay = isset($options['retry_delay']) ? (float) $options['retry_delay'] : 1.0;
         $this->maxRetryDelay = isset($options['max_retry_delay']) ? (float) $options['max_retry_delay'] : 30.0;
         $this->userAgent = isset($options['user_agent'])
@@ -241,7 +242,7 @@ class Client
             } catch (TransportException $exception) {
                 // Таймаут и обрыв на середине тела не повторяем: выдача уже
                 // собрана и оплачена.
-                if ($attempt >= $this->retries
+                if ($this->isLastAttempt($attempt)
                     || $exception instanceof TimeoutException
                     || $exception instanceof IncompleteResponseException) {
                     throw $exception;
@@ -269,7 +270,7 @@ class Client
 
             // Проснуться раньше названного срока — снова получить тот же
             // отказ. Ждать дольше потолка не станем: отдаём ошибку.
-            if ($attempt >= $this->retries
+            if ($this->isLastAttempt($attempt)
                 || ! $this->isRetryable($status)
                 || ($retryAfter !== null && $retryAfter > $this->maxRetryDelay)) {
                 throw $error;
@@ -417,6 +418,17 @@ class Client
         $decoded = json_decode($body, true);
 
         return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * Попытки нумеруются с нуля: при attempts = 3 у последней индекс 2.
+     *
+     * @param  int  $attempt
+     * @return bool
+     */
+    private function isLastAttempt($attempt)
+    {
+        return $attempt + 1 >= $this->attempts;
     }
 
     /**
