@@ -21,6 +21,28 @@ flush();
 
 $connections = $mode === 'twice' ? 2 : 1;
 
+if ($mode === 'reuse-then-silent') {
+    // Первый запрос обслуживаем, на втором по тому же сокету молчим:
+    // так выглядит таймаут ответа на переиспользованном соединении.
+    $connection = @stream_socket_accept($server, 10);
+
+    if ($connection === false) {
+        exit(1);
+    }
+
+    read_request($connection);
+    $body = '{"balance":1,"currency":"RUB"}';
+    fwrite($connection, "HTTP/1.1 200 OK\r\n"
+        ."Content-Type: application/json\r\n"
+        .'Content-Length: '.strlen($body)."\r\n"
+        ."Connection: keep-alive\r\n\r\n".$body);
+    fflush($connection);
+
+    read_request($connection);
+    sleep(10);
+    exit(0);
+}
+
 if ($mode === 'reuse') {
     // Два запроса по одному соединению: так ходит curl с keep-alive.
     $connection = @stream_socket_accept($server, 10);
@@ -57,7 +79,7 @@ for ($i = 0; $i < $connections; $i++) {
     respond($connection, $mode);
 
     // Часть сценариев держит сокет открытым намеренно.
-    if (! in_array($mode, ['truncated', 'silent', 'keepalive', 'reuse'], true)) {
+    if (! in_array($mode, ['truncated', 'silent', 'keepalive', 'reuse', 'reuse-then-silent'], true)) {
         fclose($connection);
     }
 }

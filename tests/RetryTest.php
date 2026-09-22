@@ -223,7 +223,9 @@ class RetryTest extends TestCase
         $elapsed = microtime(true) - $started;
 
         self::assertSame(2, $this->transport->count());
-        self::assertGreaterThanOrEqual(1.0, $elapsed);
+        // Допуск на зернистость таймера: на Windows сон в секунду
+        // отмеряется с точностью до миллисекунд в меньшую сторону.
+        self::assertGreaterThanOrEqual(0.95, $elapsed);
     }
 
     /** Дольше потолка SDK не ждёт: отдаёт ошибку с retryAfter(). */

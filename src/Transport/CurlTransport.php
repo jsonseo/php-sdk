@@ -17,6 +17,14 @@ class CurlTransport implements TransportInterface
      */
     private $handle;
 
+    /**
+     * Было ли на этом дескрипторе хоть одно установленное соединение.
+     * По нему отличается переиспользованный сокет от неустановленного.
+     *
+     * @var bool
+     */
+    private $connectedBefore = false;
+
     public function __construct()
     {
         if (! function_exists('curl_init')) {
@@ -74,6 +82,11 @@ class CurlTransport implements TransportInterface
         $responseBody = curl_exec($handle);
         $code = curl_errno($handle);
 
+        if ((float) curl_getinfo($handle, CURLINFO_CONNECT_TIME) > 0.0
+            || (int) curl_getinfo($handle, CURLINFO_NUM_CONNECTS) > 0) {
+            $this->connectedBefore = true;
+        }
+
         // Судим по коду ошибки, а не по возвращённому значению: на PHP 7.1
         // curl_exec при обрыве отдаёт прочитанный огрызок вместо false, и
         // обрезанное тело ушло бы наверх как успешный ответ.
@@ -87,10 +100,17 @@ class CurlTransport implements TransportInterface
             }
 
             // Код 28 curl ставит и на таймауте соединения, и на таймауте
-            // ответа. Первый ничего не стоил и повторяется. Различает их
-            // время до начала передачи: CONNECT_TIME не годится, на
-            // переиспользованном сокете он тоже нулевой.
-            $connected = (float) curl_getinfo($handle, CURLINFO_PRETRANSFER_TIME) > 0.0;
+            // ответа. Первый ничего не стоил и повторяется, второй значит,
+            // что выдача уже считается и оплачена.
+            //
+            // Одного поля для различения не хватает: на Linux у неудачного
+            // соединения нулевые все три, а на Windows PRETRANSFER_TIME
+            // равен всему бюджету. Поэтому считаем соединение состоявшимся,
+            // если curl открыл его в этом запросе — или если дескриптор уже
+            // работал раньше и сокет мог прийти из пула.
+            $connected = (float) curl_getinfo($handle, CURLINFO_CONNECT_TIME) > 0.0
+                || (int) curl_getinfo($handle, CURLINFO_NUM_CONNECTS) > 0
+                || $this->connectedBefore;
 
             if ($code === CURLE_OPERATION_TIMEOUTED && $connected) {
                 throw new TimeoutException('Ответа от JSON SEO API не дождались: '.$description.'.', $code);

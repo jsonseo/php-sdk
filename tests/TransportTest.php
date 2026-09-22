@@ -197,6 +197,25 @@ class TransportTest extends TestCase
         self::assertSame('{"accept":"text/plain"}', $second->body());
     }
 
+    /**
+     * Таймаут ответа на переиспользованном сокете — это уже оплаченная
+     * выдача, а не недошедший запрос. Отличить их по одному полю curl
+     * нельзя: на Linux у неудачного соединения нулевые все счётчики,
+     * а на Windows время до передачи равно всему бюджету.
+     */
+    public function test_curl_timeout_on_a_reused_connection_is_a_timeout(): void
+    {
+        $url = $this->startServer('reuse-then-silent');
+        $transport = new CurlTransport;
+
+        $first = $transport->send('POST', $url, [], 'a=1', $this->options());
+        self::assertSame(200, $first->status());
+
+        $this->expectException(TimeoutException::class);
+
+        $transport->send('POST', $url, [], 'b=2', ['timeout' => 1.0, 'connect_timeout' => 2.0]);
+    }
+
     public function test_curl_reads_a_body_without_content_length(): void
     {
         $this->assertReadsBodyWithoutContentLength(new CurlTransport);
@@ -260,7 +279,14 @@ class TransportTest extends TestCase
      */
     private function startServer($mode)
     {
-        $command = escapeshellarg(PHP_BINARY).' '.escapeshellarg(__DIR__.'/fixtures/server.php').' '.escapeshellarg($mode);
+        $script = __DIR__.DIRECTORY_SEPARATOR.'fixtures'.DIRECTORY_SEPARATOR.'server.php';
+
+        // С 7.4 команда передаётся массивом — так она не проходит через
+        // оболочку. На Windows строковая форма ломается о кавычки: путь к
+        // php.exe начинается с них, и cmd.exe разбирает его неверно.
+        $command = PHP_VERSION_ID >= 70400
+            ? [PHP_BINARY, $script, $mode]
+            : escapeshellarg(PHP_BINARY).' '.escapeshellarg($script).' '.escapeshellarg($mode);
 
         $this->process = proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $this->pipes);
 
