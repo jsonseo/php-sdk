@@ -72,10 +72,13 @@ class CurlTransport implements TransportInterface
         }
 
         $responseBody = curl_exec($handle);
+        $code = curl_errno($handle);
 
-        if ($responseBody === false) {
+        // Судим по коду ошибки, а не по возвращённому значению: на PHP 7.1
+        // curl_exec при обрыве отдаёт прочитанный огрызок вместо false, и
+        // обрезанное тело ушло бы наверх как успешный ответ.
+        if ($code !== CURLE_OK || $responseBody === false) {
             $message = curl_error($handle);
-            $code = curl_errno($handle);
             $description = $message !== '' ? $message : 'ошибка curl '.$code;
 
             // Код 18 — обрыв на середине тела: выдача уже оплачена.

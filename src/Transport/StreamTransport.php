@@ -82,7 +82,16 @@ class StreamTransport implements TransportInterface
                 break;
             }
 
-            $chunk = fread($handle, self::CHUNK);
+            // Просим ровно столько, сколько осталось. До PHP 8.3 fread не
+            // отдаёт прочитанное, пока не наберёт запрошенную длину или не
+            // выйдет таймаут, — на живом keep-alive соединении запрос с
+            // запасом висел бы до конца бюджета на каждом успешном ответе.
+            $want = $expected === null ? self::CHUNK : min(self::CHUNK, $expected - strlen($responseBody));
+            $chunk = fread($handle, $want);
+
+            if ($chunk !== false && $chunk !== '') {
+                $responseBody .= $chunk;
+            }
 
             $info = stream_get_meta_data($handle);
 
@@ -95,13 +104,13 @@ class StreamTransport implements TransportInterface
             if ($chunk === false || $chunk === '') {
                 break;
             }
-
-            $responseBody .= $chunk;
         }
 
         fclose($handle);
 
-        if ($timedOut) {
+        // Таймаут важен, только если тело так и не собралось: на старых
+        // версиях он выставляется и вместе с полностью прочитанным телом.
+        if ($timedOut && ($expected === null || strlen($responseBody) < $expected)) {
             throw new TimeoutException('Ответа от JSON SEO API не дождались: тело ответа пришло не целиком.');
         }
 
