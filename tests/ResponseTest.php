@@ -7,11 +7,7 @@ use PHPUnit\Framework\TestCase;
 
 class ResponseTest extends TestCase
 {
-    /**
-     * Регистр имён заголовков HTTP не различает, а свой транспорт пишут под
-     * интерфейс и вправе отдать их как угодно: Retry-After с заглавных букв
-     * не должен из-за этого потеряться.
-     */
+    /** Свой транспорт вправе отдать заголовки в любом регистре. */
     public function test_headers_are_found_regardless_of_case(): void
     {
         $response = new Response(429, ['Retry-After' => '17', 'CONTENT-TYPE' => 'application/json'], '');

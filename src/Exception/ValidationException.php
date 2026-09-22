@@ -2,14 +2,11 @@
 
 namespace JsonSeo\Exception;
 
-/**
- * 422: параметры запроса не приняты. Деньги не списываются.
- */
+/** 422: параметры не приняты. Деньги не списываются. */
 class ValidationException extends ApiException
 {
     /**
      * Ошибки по именам параметров: ['text' => ['Введите запрос']].
-     * Пустой массив, если сервис прислал только общее сообщение.
      *
      * @return array<string, array<int, string>>
      */
@@ -31,7 +28,7 @@ class ValidationException extends ApiException
     }
 
     /**
-     * Имена параметров, которые сервис забраковал.
+     * Забракованные параметры.
      *
      * @return array<int, string>
      */

@@ -1,12 +1,8 @@
 <?php
 
 /**
- * Крошечный HTTP-сервер для тестов транспортов.
- *
- * Запускается отдельным процессом, печатает в stdout занятый порт и
- * отвечает по заданному сценарию. Нужен потому, что заглушка транспорта
- * проверяет клиент, но не сами транспорты, — а разбор ответа и обнаружение
- * обрыва живут именно в них.
+ * HTTP-сервер для тестов транспортов: печатает в stdout занятый порт и
+ * отвечает по заданному сценарию.
  *
  * Использование: php server.php <сценарий>
  */
@@ -25,6 +21,31 @@ flush();
 
 $connections = $mode === 'twice' ? 2 : 1;
 
+if ($mode === 'reuse') {
+    // Два запроса по одному соединению: так ходит curl с keep-alive.
+    $connection = @stream_socket_accept($server, 10);
+
+    if ($connection === false) {
+        exit(1);
+    }
+
+    foreach ([0, 1] as $number) {
+        $head = read_request($connection);
+        // Отдаём обратно полученный Accept: по нему видно, не протекли ли
+        // настройки прошлого запроса в следующий.
+        $accept = preg_match('/^Accept:\s*(.+)$/mi', $head, $m) ? trim($m[1]) : 'нет';
+        $body = '{"accept":"'.$accept.'"}';
+        fwrite($connection, "HTTP/1.1 200 OK\r\n"
+            ."Content-Type: application/json\r\n"
+            .'Content-Length: '.strlen($body)."\r\n"
+            ."Connection: keep-alive\r\n\r\n".$body);
+        fflush($connection);
+    }
+
+    sleep(10);
+    exit(0);
+}
+
 for ($i = 0; $i < $connections; $i++) {
     $connection = @stream_socket_accept($server, 10);
 
@@ -35,9 +56,8 @@ for ($i = 0; $i < $connections; $i++) {
     read_request($connection);
     respond($connection, $mode);
 
-    // Сценарии, которые изображают зависший или оборвавшийся ответ,
-    // закрывают соединение сами — или намеренно не закрывают.
-    if (! in_array($mode, ['truncated', 'silent', 'keepalive'], true)) {
+    // Часть сценариев держит сокет открытым намеренно.
+    if (! in_array($mode, ['truncated', 'silent', 'keepalive', 'reuse'], true)) {
         fclose($connection);
     }
 }
@@ -45,11 +65,10 @@ for ($i = 0; $i < $connections; $i++) {
 exit(0);
 
 /**
- * Вычитывает запрос целиком: не забрав тело, сервер закрыл бы соединение
- * раньше, чем клиент успел его дописать, и тот получил бы обрыв вместо ответа.
+ * Вычитывает запрос целиком: иначе клиент получит обрыв вместо ответа.
  *
  * @param  resource  $connection
- * @return void
+ * @return string Заголовки запроса
  */
 function read_request($connection)
 {
@@ -78,6 +97,8 @@ function read_request($connection)
             $remaining -= strlen($chunk);
         }
     }
+
+    return $head;
 }
 
 /**
@@ -89,7 +110,7 @@ function respond($connection, $mode)
 {
     if ($mode === 'limited') {
         $body = '{"message":"Too Many Attempts."}';
-        // Заголовок намеренно в смешанном регистре: клиент ищет его в нижнем.
+        // В смешанном регистре: клиент ищет заголовок в нижнем.
         fwrite($connection, "HTTP/1.1 429 Too Many Requests\r\n"
             ."Content-Type: application/json\r\n"
             ."Retry-After: 17\r\n"
@@ -100,8 +121,7 @@ function respond($connection, $mode)
     }
 
     if ($mode === 'truncated') {
-        // Обещаем тысячу байт, отдаём горсть и замолкаем: так выглядит
-        // оборвавшаяся на середине передача.
+        // Обещаем тысячу байт, отдаём горсть и замолкаем.
         fwrite($connection, "HTTP/1.1 200 OK\r\n"
             ."Content-Type: application/json\r\n"
             ."Content-Length: 1000\r\n"
@@ -114,8 +134,7 @@ function respond($connection, $mode)
     }
 
     if ($mode === 'cut') {
-        // То же, но соединение рвётся сразу: так ведёт себя упавший бэкенд
-        // или сбросивший сессию прокси.
+        // То же, но соединение рвётся сразу — как у упавшего бэкенда.
         fwrite($connection, "HTTP/1.1 200 OK\r\n"
             ."Content-Type: application/json\r\n"
             ."Content-Length: 1000\r\n"
@@ -126,17 +145,26 @@ function respond($connection, $mode)
         return;
     }
 
+    if ($mode === 'chunked') {
+        // Тела без Content-Length: длину проверить нечем, и чтение обязано
+        // остановиться на конце потока, а не на таймауте.
+        $body = '{"balance":123.45,"currency":"RUB"}';
+        fwrite($connection, "HTTP/1.1 200 OK\r\n"
+            ."Content-Type: application/json\r\n"
+            ."Connection: close\r\n\r\n".$body);
+
+        return;
+    }
+
     if ($mode === 'silent') {
-        // Запрос принят, заголовков нет: так выглядит сервис, который ещё
-        // собирает выдачу. Деньги за неё уже считаются.
+        // Запрос принят, заголовков нет: сервис ещё собирает выдачу.
         sleep(10);
 
         return;
     }
 
     if ($mode === 'keepalive') {
-        // Соединение после ответа не закрывается — так отвечает любой
-        // нормальный сервер HTTP/1.1, включая боевой.
+        // Соединение после ответа не закрывается, как у боевого сервера.
         $body = '{"balance":123.45,"currency":"RUB"}';
         fwrite($connection, "HTTP/1.1 200 OK\r\n"
             ."Content-Type: application/json\r\n"

@@ -166,10 +166,7 @@ class ClientTest extends TestCase
         self::assertSame('0.5', $this->transport->sentParams()['threshold']);
     }
 
-    /**
-     * Дробная часть не должна зависеть от локали: в ru_RU обычное приведение
-     * к строке дало бы запятую, и сервис такого числа не понял бы.
-     */
+    /** В ru_RU приведение к строке дало бы запятую. */
     public function test_floats_ignore_the_numeric_locale(): void
     {
         $previous = setlocale(LC_NUMERIC, '0');
@@ -208,11 +205,7 @@ class ClientTest extends TestCase
         }
     }
 
-    /**
-     * Разделитель параметров задаётся явно, а не берётся из php.ini: на
-     * легаси-хостинге в arg_separator.output до сих пор встречается &amp;,
-     * и тогда все параметры, кроме первого, уехали бы с мусорным префиксом.
-     */
+    /** Разделитель явно, а не из php.ini, где бывает &amp;. */
     public function test_parameters_are_joined_with_an_ampersand(): void
     {
         $previous = ini_get('arg_separator.output');
@@ -246,6 +239,13 @@ class ClientTest extends TestCase
         $this->client()->callRaw('yandex/xml', ['query' => 'тест']);
 
         self::assertSame('application/xml, text/xml', $this->transport->requests[0]['headers']['Accept']);
+    }
+
+    public function test_rejects_parameters_that_are_neither_string_nor_array(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->client()->yandex(42);
     }
 
     public function test_rejects_unsupported_parameter_values(): void
@@ -313,10 +313,7 @@ class ClientTest extends TestCase
         self::assertSame(3.0, $options['connect_timeout']);
     }
 
-    /**
-     * Каждый метод SDK должен стучаться ровно в свой путь API: опечатка в
-     * пути иначе всплыла бы только на боевом ключе.
-     */
+    /** Опечатка в пути иначе всплыла бы только на боевом ключе. */
     public function test_every_method_calls_its_own_path(): void
     {
         $methods = [

@@ -2,7 +2,5 @@
 
 namespace JsonSeo\Exception;
 
-/**
- * Запрос не отправлен: SDK забраковал аргументы ещё до обращения к сети.
- */
+/** SDK забраковал аргументы, запрос не отправлялся. */
 class InvalidArgumentException extends JsonSeoException {}

@@ -7,19 +7,12 @@ use JsonSeo\Exception\TimeoutException;
 use JsonSeo\Exception\TransportException;
 
 /**
- * Запасной транспорт на потоках PHP — для хостинга, где ext-curl не собран.
- *
- * Возможностей меньше: отдельного таймаута на установку соединения у потоков
- * нет, действует один общий, и кода ошибки они не отдают — только текст.
- * Поэтому по умолчанию берётся curl, а этот класс подставляется, только
- * когда curl недоступен.
+ * Запасной транспорт для хостинга без ext-curl. Возможностей меньше: общий
+ * таймаут вместо раздельных и текст ошибки вместо кода.
  */
 class StreamTransport implements TransportInterface
 {
-    /**
-     * Сколько читать за раз. Ответ выдачи — сотни килобайт, и посимвольное
-     * чтение на нём заметно дороже.
-     */
+    /** Сколько читать за раз: ответ выдачи — сотни килобайт. */
     const CHUNK = 16384;
 
     public function __construct()
@@ -34,10 +27,8 @@ class StreamTransport implements TransportInterface
      */
     public function send($method, $url, array $headers, $body, array $options)
     {
-        // Соединение закрывается сразу после ответа. Пул соединений потокам
-        // всё равно недоступен, а с keep-alive сервер держал бы сокет
-        // открытым, и чтение до конца потока упиралось бы в таймаут на
-        // каждом успешном ответе.
+        // Без этого сервер держал бы сокет открытым, и чтение до конца
+        // потока упиралось бы в таймаут на каждом успешном ответе.
         $headers['Connection'] = 'close';
 
         $lines = [];
@@ -54,8 +45,7 @@ class StreamTransport implements TransportInterface
                 'content' => $body === null ? '' : $body,
                 'timeout' => $timeout,
                 'follow_location' => 0,
-                // Без этого ответы 4xx и 5xx приходят как ошибка, и сообщение
-                // сервиса о причине отказа теряется вместе с телом.
+                // Иначе 4xx и 5xx приходят как ошибка, без тела и причины.
                 'ignore_errors' => true,
                 'protocol_version' => 1.1,
             ],
@@ -67,8 +57,7 @@ class StreamTransport implements TransportInterface
 
         $started = microtime(true);
 
-        // Чужое предупреждение из другого места программы иначе попало бы в
-        // текст ошибки как причина отказа.
+        // Иначе в текст ошибки попадёт чужое предупреждение.
         if (function_exists('error_clear_last')) {
             error_clear_last();
         }
@@ -86,10 +75,8 @@ class StreamTransport implements TransportInterface
         $responseBody = '';
         $timedOut = false;
 
-        // Читаем сами, а не через file_get_contents: тот на исчерпании
-        // таймаута отдаёт прочитанное — без ошибки и без единого признака
-        // обрыва, и обрезанная выдача уходила бы наверх как успешная, хотя
-        // клиент за неё уже заплатил.
+        // Читаем сами: file_get_contents на таймауте отдаёт прочитанное
+        // без признака обрыва, и огрызок выдачи выглядел бы успешным.
         while (! feof($handle)) {
             if ($expected !== null && strlen($responseBody) >= $expected) {
                 break;
@@ -128,12 +115,10 @@ class StreamTransport implements TransportInterface
     }
 
     /**
-     * Соединения нет или заголовки так и не пришли.
-     *
-     * Потоки не отдают кода ошибки, и по тексту эти случаи не различить:
-     * на ожидании заголовков PHP пишет просто «HTTP request failed!».
-     * Зато их различает время: если бюджет выбран до конца, сервис успел
-     * принять запрос и уже считает выдачу — повторять такое нельзя.
+     * Соединения нет или заголовки не пришли. Различает их только время:
+     * выбранный до конца бюджет значит, что сервис принял запрос и уже
+     * считает выдачу. По тексту судить нельзя — «Connection timed out» от
+     * ядра приходит и на неустановленном соединении, за которое не платят.
      *
      * @param  float  $started
      * @param  float  $timeout
@@ -143,11 +128,8 @@ class StreamTransport implements TransportInterface
     {
         $error = error_get_last();
         $message = isset($error['message']) ? $error['message'] : 'соединение не установлено';
-        $elapsed = microtime(true) - $started;
 
-        if ($elapsed >= $timeout * 0.95
-            || stripos($message, 'timed out') !== false
-            || stripos($message, 'timeout') !== false) {
+        if (microtime(true) - $started >= $timeout * 0.95) {
             return new TimeoutException('Ответа от JSON SEO API не дождались: '.$message.'.');
         }
 
@@ -155,8 +137,7 @@ class StreamTransport implements TransportInterface
     }
 
     /**
-     * Сколько байт тела обещал сервис. null, если заголовка нет — тогда
-     * полноту проверить нечем и читается весь поток до конца.
+     * Сколько байт тела обещал сервис. null — проверить полноту нечем.
      *
      * @param  array<string, mixed>  $meta
      * @return int|null
@@ -173,8 +154,7 @@ class StreamTransport implements TransportInterface
     }
 
     /**
-     * Стартовых строк может быть несколько, если в цепочке стоит прокси:
-     * берётся последняя — она от конечного ответа.
+     * Стартовых строк бывает несколько из-за прокси: берём последнюю.
      *
      * @param  array<string, mixed>  $meta
      * @return int
@@ -203,7 +183,7 @@ class StreamTransport implements TransportInterface
 
         foreach ($this->wrapperData($meta) as $line) {
             if (strncasecmp($line, 'HTTP/', 5) === 0) {
-                // Заголовки предыдущего ответа в цепочке к делу не относятся.
+                // Заголовки предыдущего ответа в цепочке не нужны.
                 $headers = [];
 
                 continue;

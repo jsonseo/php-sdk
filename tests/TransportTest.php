@@ -4,18 +4,15 @@ namespace JsonSeo\Tests;
 
 use JsonSeo\Exception\IncompleteResponseException;
 use JsonSeo\Exception\TimeoutException;
+use JsonSeo\Exception\TransportException;
 use JsonSeo\Transport\CurlTransport;
 use JsonSeo\Transport\StreamTransport;
 use JsonSeo\Transport\TransportInterface;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Транспорты против настоящего сокета.
- *
- * Заглушка транспорта в остальных тестах проверяет клиент, но не их самих,
- * а обнаружение обрыва и разбор ответа живут именно здесь — и молча
- * обрезанное тело дороже любой другой ошибки в библиотеке: клиент за эту
- * выдачу уже заплатил.
+ * Транспорты против настоящего сокета: заглушка в остальных тестах
+ * проверяет клиент, но не их самих.
  */
 class TransportTest extends TestCase
 {
@@ -94,12 +91,7 @@ class TransportTest extends TestCase
         $this->assertSilenceIsATimeout(new StreamTransport);
     }
 
-    /**
-     * Сервер HTTP/1.1 соединение после ответа не закрывает — так отвечает и
-     * боевой. Чтение «до конца потока» на таком ответе упирается в таймаут,
-     * хотя тело пришло целиком, и каждый успешный запрос превращался бы в
-     * пятиминутное ожидание с исключением в конце.
-     */
+    /** Сервер HTTP/1.1 соединение не закрывает — чтение до EOF висло бы. */
     private function assertReadsKeepAliveResponse(TransportInterface $transport): void
     {
         $url = $this->startServer('keepalive');
@@ -113,10 +105,7 @@ class TransportTest extends TestCase
         self::assertLessThan(3.0, $elapsed, 'ответ не должен ждать закрытия соединения');
     }
 
-    /**
-     * Оборвавшееся на середине тело нельзя выдавать за успешный ответ: за эту
-     * выдачу уже заплачено, а вернулся бы огрызок.
-     */
+    /** Огрызок нельзя выдавать за успешный ответ: за выдачу уже заплачено. */
     private function assertCutConnectionRaisesIncompleteResponse(TransportInterface $transport): void
     {
         $url = $this->startServer('cut');
@@ -126,11 +115,7 @@ class TransportTest extends TestCase
         $transport->send('POST', $url, [], 'a=1', $this->options());
     }
 
-    /**
-     * Сервис принял запрос и молчит, пока собирает выдачу, — деньги за неё
-     * уже считаются. Повторять такое нельзя, поэтому это именно таймаут,
-     * а не обрыв связи.
-     */
+    /** Сервис принял запрос и молчит: деньги считаются, повторять нельзя. */
     private function assertSilenceIsATimeout(TransportInterface $transport): void
     {
         $url = $this->startServer('silent');
@@ -163,13 +148,7 @@ class TransportTest extends TestCase
         self::assertSame('{"message":"Too Many Attempts."}', $response->body());
     }
 
-    /**
-     * Ответ, оборвавшийся на середине тела, обязан стать ошибкой.
-     *
-     * Потоковый транспорт раньше отдавал такой огрызок как успешный ответ:
-     * file_get_contents на исчерпании таймаута возвращает прочитанное, не
-     * поднимая ошибки, — и обрезанная выдача уходила наверх как настоящая.
-     */
+    /** Оборвавшийся на середине ответ обязан стать ошибкой. */
     private function assertTruncatedBodyRaisesTimeout(TransportInterface $transport): void
     {
         $url = $this->startServer('truncated');
@@ -187,10 +166,7 @@ class TransportTest extends TestCase
         return ['timeout' => 5.0, 'connect_timeout' => 2.0];
     }
 
-    /**
-     * Дескриптор curl переиспользуется между запросами — настройки прошлого
-     * запроса не должны протекать в следующий.
-     */
+    /** Настройки прошлого запроса не должны протекать в следующий. */
     public function test_curl_handle_serves_two_requests(): void
     {
         $url = $this->startServer('twice');
@@ -205,8 +181,79 @@ class TransportTest extends TestCase
     }
 
     /**
-     * Поднимает сервер отдельным процессом и возвращает адрес, по которому
-     * он отвечает.
+     * Два запроса по одному сокету: сервер возвращает полученный Accept,
+     * по нему видно, что curl_reset() сработал. Заодно исполняется путь с
+     * переиспользованным соединением, ради которого и живёт дескриптор.
+     */
+    public function test_curl_reuses_the_connection_without_leaking_settings(): void
+    {
+        $url = $this->startServer('reuse');
+        $transport = new CurlTransport;
+
+        $first = $transport->send('POST', $url, ['Accept' => 'application/json'], 'a=1', $this->options());
+        $second = $transport->send('POST', $url, ['Accept' => 'text/plain'], 'b=2', $this->options());
+
+        self::assertSame('{"accept":"application/json"}', $first->body());
+        self::assertSame('{"accept":"text/plain"}', $second->body());
+    }
+
+    public function test_curl_reads_a_body_without_content_length(): void
+    {
+        $this->assertReadsBodyWithoutContentLength(new CurlTransport);
+    }
+
+    public function test_stream_reads_a_body_without_content_length(): void
+    {
+        $this->assertReadsBodyWithoutContentLength(new StreamTransport);
+    }
+
+    public function test_curl_reports_a_refused_connection(): void
+    {
+        $this->assertRefusedConnectionIsRetryable(new CurlTransport);
+    }
+
+    public function test_stream_reports_a_refused_connection(): void
+    {
+        $this->assertRefusedConnectionIsRetryable(new StreamTransport);
+    }
+
+    /** Без Content-Length полноту проверить нечем: читаем до конца потока. */
+    private function assertReadsBodyWithoutContentLength(TransportInterface $transport): void
+    {
+        $url = $this->startServer('chunked');
+
+        $started = microtime(true);
+        $response = $transport->send('POST', $url, [], 'a=1', $this->options());
+
+        self::assertSame(200, $response->status());
+        self::assertSame('{"balance":123.45,"currency":"RUB"}', $response->body());
+        self::assertLessThan(3.0, microtime(true) - $started);
+    }
+
+    /**
+     * Запрос до сервиса не дошёл и ничего не стоил — такой отказ обязан
+     * быть повторяемым, то есть не таймаутом.
+     */
+    private function assertRefusedConnectionIsRetryable(TransportInterface $transport): void
+    {
+        // Порт занимаем и сразу отпускаем: на него точно никто не слушает.
+        $probe = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+        $name = stream_socket_get_name($probe, false);
+        $port = substr($name, strrpos($name, ':') + 1);
+        fclose($probe);
+
+        try {
+            $transport->send('POST', 'http://127.0.0.1:'.$port.'/api/balance', [], 'a=1', $this->options());
+            self::fail('ожидался отказ соединения');
+        } catch (TimeoutException $exception) {
+            self::fail('отказ соединения не должен считаться таймаутом: '.$exception->getMessage());
+        } catch (TransportException $exception) {
+            self::assertNotSame('', $exception->getMessage());
+        }
+    }
+
+    /**
+     * Поднимает сервер отдельным процессом и возвращает его адрес.
      *
      * @param  string  $mode
      * @return string

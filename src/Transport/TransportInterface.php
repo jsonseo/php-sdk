@@ -5,9 +5,8 @@ namespace JsonSeo\Transport;
 use JsonSeo\Exception\TransportException;
 
 /**
- * Как SDK ходит в сеть. Подменяется в тестах и в проектах, где HTTP уже
- * ходит через свой клиент (Guzzle, Symfony HttpClient): клиенту достаточно
- * объекта с этим методом.
+ * Как SDK ходит в сеть. Подменяется в тестах и в проектах со своим
+ * HTTP-клиентом — достаточно объекта с этим методом.
  */
 interface TransportInterface
 {

@@ -11,11 +11,10 @@ namespace JsonSeo\Api;
 trait GoogleMethods
 {
     /**
-     * Органическая выдача google.com. По умолчанию мобильная.
-     * Стоимость: 0.01 ₽ за страницу.
+     * Органическая выдача google.com: мобильная, 0.01 ₽ за страницу.
      *
-     * Регион задаётся параметром region из справочника googleRegions():
-     * сервис соберёт по нему uule и подставит gl по стране региона.
+     * Регион — параметром region из googleRegions(): по нему соберутся
+     * uule и gl.
      *
      * @param string|array{
      *     q: string,
@@ -56,8 +55,7 @@ trait GoogleMethods
     }
 
     /**
-     * Подсказки Google (autocomplete): до ~15 фраз без персонализации.
-     * Стоимость: 0.01 ₽ за запрос.
+     * Подсказки Google: до ~15 фраз. 0.01 ₽ за запрос.
      *
      * @param  string|array{q: string, region?: int, gl?: string, hl?: string, uule?: string, zone?: string}  $params
      * @return array{query: string, results: array<int, string>}
@@ -68,8 +66,7 @@ trait GoogleMethods
     }
 
     /**
-     * Справочник регионов Google: числовой ID по названию города или страны,
-     * вместе с готовым параметром uule. Бесплатно, ключ обязателен.
+     * ID региона Google по названию и готовый uule. Бесплатно, нужен ключ.
      *
      * @param  string|array{name: string, lang?: string}  $params
      * @return array{
@@ -94,8 +91,7 @@ trait GoogleMethods
     }
 
     /**
-     * Поиск по картинкам. Страница вертикали — 100 карточек.
-     * Стоимость: 0.01 ₽ за страницу.
+     * Поиск по картинкам: 100 карточек на страницу, 0.01 ₽ за страницу.
      *
      * @param string|array{
      *     q: string,
@@ -132,8 +128,7 @@ trait GoogleMethods
     }
 
     /**
-     * Поиск по видео. Страница вертикали — 10 карточек.
-     * Стоимость: 0.01 ₽ за страницу.
+     * Поиск по видео: 10 карточек на страницу, 0.01 ₽ за страницу.
      *
      * @param string|array{
      *     q: string,

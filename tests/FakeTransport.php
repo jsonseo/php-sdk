@@ -8,11 +8,7 @@ use JsonSeo\Exception\TransportException;
 use JsonSeo\Transport\Response;
 use JsonSeo\Transport\TransportInterface;
 
-/**
- * Транспорт-заглушка: отдаёт заранее сложенные ответы и запоминает, что у
- * него просили. Позволяет проверять сборку запроса и разбор ответа, не
- * обращаясь к сети.
- */
+/** Заглушка: отдаёт сложенные ответы и запоминает, что просили. */
 class FakeTransport implements TransportInterface
 {
     /**

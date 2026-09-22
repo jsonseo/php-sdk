@@ -52,10 +52,7 @@ class RetryTest extends TestCase
         self::assertSame(2, $this->transport->count());
     }
 
-    /**
-     * Без Retry-After пауза берётся из собственного бэкоффа — случай с
-     * названным сроком проверяется отдельно.
-     */
+    /** Без Retry-After пауза берётся из бэкоффа. */
     public function test_rate_limit_is_retried(): void
     {
         $this->transport
@@ -150,10 +147,7 @@ class RetryTest extends TestCase
         }
     }
 
-    /**
-     * Срок, названный сервисом, берётся как есть: проснувшись раньше, мы
-     * гарантированно получим тот же отказ и сожжём попытку впустую.
-     */
+    /** Проснуться раньше названного срока — снова получить тот же отказ. */
     public function test_retry_after_sets_the_pause(): void
     {
         $this->transport
@@ -168,10 +162,7 @@ class RetryTest extends TestCase
         self::assertGreaterThanOrEqual(1.0, $elapsed);
     }
 
-    /**
-     * Ждать дольше собственного потолка SDK не станет: вместо этого отдаёт
-     * ошибку, в ней есть retryAfter(), и вызывающий решает сам.
-     */
+    /** Дольше потолка SDK не ждёт: отдаёт ошибку с retryAfter(). */
     public function test_retry_after_beyond_the_cap_stops_retrying(): void
     {
         $this->transport
@@ -187,9 +178,19 @@ class RetryTest extends TestCase
         }
     }
 
-    /**
-     * RFC 9110 разрешает и HTTP-дату: срок назван, и он не должен теряться.
-     */
+    /** Ровно потолок — ещё в пределах: сравнение строгое. */
+    public function test_retry_after_equal_to_the_cap_still_retries(): void
+    {
+        $this->transport
+            ->queueJson(['message' => 'Too Many Attempts.'], 429, ['retry-after' => '1'])
+            ->queueJson(['results' => []]);
+
+        $this->client(['max_retry_delay' => 1.0])->yandex('тест');
+
+        self::assertSame(2, $this->transport->count());
+    }
+
+    /** RFC 9110 разрешает и HTTP-дату. */
     public function test_retry_after_accepts_an_http_date(): void
     {
         $this->transport->queueJson(
@@ -247,10 +248,7 @@ class RetryTest extends TestCase
         }
     }
 
-    /**
-     * Тело, оборвавшееся на середине, тоже не повторяется: выдача уже
-     * собрана и оплачена, обрыв случился на отдаче.
-     */
+    /** Обрыв на отдаче не повторяется: выдача уже оплачена. */
     public function test_incomplete_response_is_not_retried(): void
     {
         $this->transport

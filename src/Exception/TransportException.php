@@ -3,7 +3,7 @@
 namespace JsonSeo\Exception;
 
 /**
- * До сервиса не достучались: сеть, DNS, TLS, таймаут. Ответа нет, поэтому
- * и статуса нет — отличается этим от ApiException.
+ * Обмен не состоялся, статуса нет: сеть, DNS, TLS. Наследники уточняют
+ * случаи, когда сервис запрос всё же принял.
  */
 class TransportException extends JsonSeoException {}
