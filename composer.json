@@ -1,0 +1,38 @@
+{
+    "name": "jsonseo/php-sdk",
+    "description": "Официальный PHP SDK для JSON SEO API: выдача Яндекса, Google и Bing, Вордстат, прогноз Директа и геолокация по IP",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["jsonseo", "seo", "serp", "yandex", "google", "bing", "wordstat", "xmlriver", "api"],
+    "homepage": "https://jsonseo.ru",
+    "support": {
+        "issues": "https://github.com/jsonseo/php-sdk/issues",
+        "docs": "https://jsonseo.ru/docs"
+    },
+    "require": {
+        "php": ">=7.1",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^7.5 || ^8.5 || ^9.6 || ^10.5 || ^11.0 || ^12.0"
+    },
+    "suggest": {
+        "ext-curl": "Быстрый транспорт с настраиваемыми таймаутами. Без него SDK работает через потоки PHP"
+    },
+    "autoload": {
+        "psr-4": {
+            "JsonSeo\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "JsonSeo\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
