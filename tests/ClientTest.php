@@ -35,6 +35,37 @@ class ClientTest extends TestCase
         new Client('   ');
     }
 
+    /**
+     * Заголовок не переносит не-ASCII: без проверки сервис отвечал бы
+     * «токен не предоставлен», и причина была бы неочевидна.
+     */
+    public function test_rejects_key_with_non_ascii(): void
+    {
+        // Второй набор — края строки: там родной trim каждого языка свой,
+        // и без общего набора обрезки эти ключи расходились бы по SDK.
+        $edges = ["\xC2\xA0KEY", "\xE2\x80\x80KEY", "\xC2\x85KEY", "KEY\x00", "\x0cKEY", "\x1cKEY", "KEY\x0b"];
+
+        foreach (array_merge(['КЛЮЧ', "dead\tbeef", "dead\x01beef", 'ключdeadbeef'], $edges) as $key) {
+            try {
+                new Client($key);
+                self::fail('Ожидался отказ на ключе '.json_encode($key));
+            } catch (InvalidArgumentException $exception) {
+                self::assertStringContainsString('ASCII', $exception->getMessage());
+            }
+        }
+    }
+
+    /** Пробелы по краям обрезаются, а не считаются браком ключа. */
+    public function test_accepts_a_normal_key(): void
+    {
+        $this->transport->queueJson([]);
+
+        $client = new Client("  Ab3-_.~xYz09 \n", ['transport' => $this->transport]);
+        $client->balance();
+
+        self::assertSame('Bearer Ab3-_.~xYz09', $this->transport->requests[0]['headers']['Authorization']);
+    }
+
     public function test_rejects_unknown_option(): void
     {
         $this->expectException(InvalidArgumentException::class);

@@ -23,7 +23,7 @@ use JsonSeo\Transport\TransportInterface;
  * транспорт, подготовка параметров, повторы и разбор ответа.
  *
  * <code>
- * $client = new JsonSeo\Client('ВАШ_КЛЮЧ');
+ * $client = new JsonSeo\Client('YOUR_KEY');
  * $serp = $client->yandex(['text' => 'купить ноутбук', 'region' => 213]);
  * </code>
  */
@@ -35,7 +35,7 @@ class Client
     use WordstatMethods;
     use YandexMethods;
 
-    const VERSION = '1.0.0';
+    const VERSION = '1.0.1';
 
     const DEFAULT_BASE_URL = 'https://jsonseo.ru/api';
 
@@ -121,8 +121,20 @@ class Client
      */
     public function __construct($apiKey, array $options = [])
     {
-        if (! is_string($apiKey) || trim($apiKey) === '') {
+        // Обрезаем ровно тот же набор, что и остальные SDK: родной trim в
+        // каждом языке свой, и один ключ принимался бы по-разному.
+        $key = is_string($apiKey) ? trim($apiKey, " \t\n\r") : '';
+
+        if ($key === '') {
             throw new InvalidArgumentException('Нужен API-ключ: возьмите его в личном кабинете на https://jsonseo.ru.');
+        }
+
+        // Заголовок Authorization не переносит не-ASCII и управляющие
+        // символы: с таким ключом он не соберётся, и сервис ответит
+        // «токен не предоставлен» вместо внятной ошибки. Ловится тут же —
+        // обычно это кириллическая буква, попавшая при вставке.
+        if (preg_match('/[^\x20-\x7E]/', $key)) {
+            throw new InvalidArgumentException('API-ключ содержит символы вне ASCII: проверьте, что он скопирован целиком и без лишних знаков.');
         }
 
         $unknown = array_diff(array_keys($options), self::$knownOptions);
@@ -133,7 +145,7 @@ class Client
             );
         }
 
-        $this->apiKey = trim($apiKey);
+        $this->apiKey = $key;
         $this->baseUrl = rtrim(isset($options['base_url']) ? $options['base_url'] : self::DEFAULT_BASE_URL, '/');
 
         // Многостраничная выдача идёт минутами, и оборванный запрос всё

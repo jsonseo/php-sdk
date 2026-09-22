@@ -22,7 +22,7 @@ composer require jsonseo/php-sdk
 
 require __DIR__ . '/vendor/autoload.php';
 
-$client = new JsonSeo\Client('ВАШ_КЛЮЧ');
+$client = new JsonSeo\Client('YOUR_KEY');
 
 $serp = $client->yandex([
     'text' => 'купить ноутбук',
@@ -449,7 +449,7 @@ try {
 Пауза между попытками удваивается и разбавляется случайной добавкой. Если сервис прислал `Retry-After`, SDK не вернётся раньше названного срока. Когда сервис просит ждать дольше `max_retry_delay`, SDK не ждёт вовсе, а отдаёт исключение с `retryAfter()` — решение остаётся за вами.
 
 ```php
-$client = new JsonSeo\Client('ВАШ_КЛЮЧ', [
+$client = new JsonSeo\Client('YOUR_KEY', [
     'attempts' => 5,           // всего попыток, вместе с первой
     'retry_delay' => 2.0,      // стартовая пауза
     'max_retry_delay' => 60.0, // потолок паузы
@@ -461,7 +461,7 @@ $client = new JsonSeo\Client('ВАШ_КЛЮЧ', [
 # Настройки клиента
 
 ```php
-$client = new JsonSeo\Client('ВАШ_КЛЮЧ', [
+$client = new JsonSeo\Client('YOUR_KEY', [
     'base_url' => 'https://jsonseo.ru/api', // адрес API
     'timeout' => 300.0,                     // сколько ждать ответа на попытку, секунд
     'connect_timeout' => 10.0,              // сколько ждать соединения, секунд
