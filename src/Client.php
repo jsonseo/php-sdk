@@ -35,7 +35,7 @@ class Client
     use WordstatMethods;
     use YandexMethods;
 
-    const VERSION = '1.0.1';
+    const VERSION = '1.0.2';
 
     const DEFAULT_BASE_URL = 'https://jsonseo.ru/api';
 
