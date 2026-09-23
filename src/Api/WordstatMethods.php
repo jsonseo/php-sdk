@@ -8,6 +8,10 @@ namespace JsonSeo\Api;
  * Вид частотности везде задаётся параметром kind, операторы расставляет
  * сервис — фразу передавайте без кавычек.
  *
+ * Если Вордстат не принял фразу из-за синтаксиса операторов, ответ удачный и
+ * оплаченный, результаты пустые, а причина — в ключе error. У обычного ответа
+ * ключа нет.
+ *
  * @see https://jsonseo.ru/docs
  */
 trait WordstatMethods
@@ -28,7 +32,8 @@ trait WordstatMethods
      *     results: array{
      *         popular: array<int, array{text: string, value: int}>,
      *         associations: array<int, array{text: string, value: int}>
-     *     }
+     *     },
+     *     error?: string
      * }
      */
     public function wordstat($params)
@@ -49,7 +54,8 @@ trait WordstatMethods
      *     text: string,
      *     region: string,
      *     device: string,
-     *     results: array{totalValue: int}
+     *     results: array{totalValue: int},
+     *     error?: string
      * }
      */
     public function wordstatFrequency($params)
@@ -75,7 +81,8 @@ trait WordstatMethods
      *     type: string,
      *     results: array{
      *         graph: array<int, array{date: string, text: string, absolute: int, relative: float}>
-     *     }
+     *     },
+     *     error?: string
      * }
      */
     public function wordstatGraph($params)
@@ -109,7 +116,8 @@ trait WordstatMethods
      *             relative: float,
      *             region_id: int|null
      *         }>
-     *     }
+     *     },
+     *     error?: string
      * }
      */
     public function wordstatMap($params)
